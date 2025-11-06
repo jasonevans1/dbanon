@@ -6,20 +6,45 @@ import (
 )
 
 type LineProcessor struct {
-	Mode     string
-	Config   *Config
-	Provider ProviderInterface
-	Eav      *Eav
+	Mode          string
+	Config        *Config
+	Provider      ProviderInterface
+	Eav           *Eav
+	insertBuffer  string
 }
 
 func NewLineProcessor(m string, c *Config, p ProviderInterface, e *Eav) *LineProcessor {
-	return &LineProcessor{Mode: m, Config: c, Provider: p, Eav: e}
+	return &LineProcessor{Mode: m, Config: c, Provider: p, Eav: e, insertBuffer: ""}
 }
 
-func (p LineProcessor) ProcessLine(s string) string {
+func (p *LineProcessor) ProcessLine(s string) string {
+	// If we're buffering an INSERT statement, continue buffering
+	if p.insertBuffer != "" {
+		p.insertBuffer += s
+		// Check if the statement is complete (ends with semicolon)
+		trimmed := strings.TrimSpace(s)
+		if strings.HasSuffix(trimmed, ";") {
+			// Process the complete INSERT statement
+			result := p.processInsert(p.insertBuffer)
+			p.insertBuffer = ""
+			return result
+		}
+		// Not complete yet, return empty string (we'll output when complete)
+		return ""
+	}
+
 	i := strings.Index(s, "INSERT")
 	if i == 0 {
-		return p.processInsert(s)
+		// Check if this is a complete INSERT statement
+		trimmed := strings.TrimSpace(s)
+		if strings.HasSuffix(trimmed, ";") {
+			// Complete statement on one line
+			return p.processInsert(s)
+		} else {
+			// Incomplete statement, start buffering
+			p.insertBuffer = s
+			return ""
+		}
 	}
 
 	findNextTable(s)
@@ -27,7 +52,7 @@ func (p LineProcessor) ProcessLine(s string) string {
 	return s
 }
 
-func (p LineProcessor) processInsert(s string) string {
+func (p *LineProcessor) processInsert(s string) string {
 	stmt, err := sqlparser.Parse(s)
 	if err != nil {
 		return s
