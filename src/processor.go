@@ -10,23 +10,23 @@ type LineProcessor struct {
 	Config        *Config
 	Provider      ProviderInterface
 	Eav           *Eav
-	insertBuffer  string
+	insertBuffer  *strings.Builder
 }
 
 func NewLineProcessor(m string, c *Config, p ProviderInterface, e *Eav) *LineProcessor {
-	return &LineProcessor{Mode: m, Config: c, Provider: p, Eav: e, insertBuffer: ""}
+	return &LineProcessor{Mode: m, Config: c, Provider: p, Eav: e, insertBuffer: &strings.Builder{}}
 }
 
 func (p *LineProcessor) ProcessLine(s string) string {
 	// If we're buffering an INSERT statement, continue buffering
-	if p.insertBuffer != "" {
-		p.insertBuffer += s
+	if p.insertBuffer.Len() > 0 {
+		p.insertBuffer.WriteString(s)
 		// Check if the statement is complete (ends with semicolon)
 		trimmed := strings.TrimSpace(s)
 		if strings.HasSuffix(trimmed, ";") {
 			// Process the complete INSERT statement
-			result := p.processInsert(p.insertBuffer)
-			p.insertBuffer = ""
+			result := p.processInsert(p.insertBuffer.String())
+			p.insertBuffer.Reset()
 			return result
 		}
 		// Not complete yet, return empty string (we'll output when complete)
@@ -42,7 +42,7 @@ func (p *LineProcessor) ProcessLine(s string) string {
 			return p.processInsert(s)
 		} else {
 			// Incomplete statement, start buffering
-			p.insertBuffer = s
+			p.insertBuffer.WriteString(s)
 			return ""
 		}
 	}
